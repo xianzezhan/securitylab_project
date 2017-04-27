@@ -32,4 +32,5 @@ You may modify the attacker server ip address & listen port in the reverse_shell
   sudo rmmod rootkit
 
 ## Warning!!!<br/>
-This project is designed for acedemic research and study only. Please don't use it against any unauthorised users in real world! 
+This project is designed for acedemic research and study only.<br /> 
+Do Not use it against any unauthorised users in the real world! 
