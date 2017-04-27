@@ -10,6 +10,8 @@ echo "hide" > /proc/CS460/status
 
 echo "unhide" > /proc/CS460/status
 
+su
+
 rmmod rootkit
 
 dmesg

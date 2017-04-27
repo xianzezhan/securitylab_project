@@ -13,6 +13,7 @@
 #include <linux/kobject.h>
 #include <linux/cred.h>
 #include <linux/sysfs.h>
+#include <linux/unistd.h>
 
 #include "rootkit.h"
 
