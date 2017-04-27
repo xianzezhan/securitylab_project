@@ -19,7 +19,7 @@
 
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("thanomk2");
+MODULE_AUTHOR("thanomk2,xzhan5");
 MODULE_DESCRIPTION("CS460-project");
 
 
