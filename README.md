@@ -28,5 +28,5 @@ Standard user on target side:
 You may modify the attacker server ip address & listen port in the reverse_shell script <br />
 
 ## How to Unload？<br />
-  echo "unhide" > /proc/CS460/status
+  echo "unhide" > /proc/CS460/status<br />
   sudo rmmod rootkit
