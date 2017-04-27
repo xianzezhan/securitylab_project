@@ -30,3 +30,6 @@ You may modify the attacker server ip address & listen port in the reverse_shell
 ## How to Unload？<br />
   echo "unhide" > /proc/CS460/status<br />
   sudo rmmod rootkit
+
+## Warning!!!<br/>
+This project is designed for acedemic research and study only. Please don't use it against any unauthorised users in real world! 
