@@ -1,7 +1,7 @@
 # Securitylab Project - Root Privileges Reverse Shell
 
 ## Team Member
-<b>Sittichok Thanomkulrat and Xianze Zhan
+<b>Sittichok Thanomkulrat and Xianze Zhan</b>
 
 ## Tested Environment
 Ubuntu 16.04(64 bit) with Kernel 4.4.0
